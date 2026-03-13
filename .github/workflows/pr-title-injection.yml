@@ -1,0 +1,22 @@
+# VECTOR 1: PR Title Injection via pull_request_target
+# Deploy to: fitzpr/poc-prt-vuln/.github/workflows/pr-title-injection.yml
+#
+# The ${{ }} expression is interpolated BEFORE the shell runs,
+# so an attacker-controlled PR title breaks out of the echo and
+# executes arbitrary commands with secrets in the environment.
+
+name: PR Title Echo
+
+on:
+  pull_request_target:
+    types: [opened, edited, synchronize]
+
+jobs:
+  log-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Log PR title
+        run: |
+          echo "Processing PR: ${{ github.event.pull_request.title }}"
+        env:
+          MY_SECRET: ${{ secrets.MY_SECRET }}

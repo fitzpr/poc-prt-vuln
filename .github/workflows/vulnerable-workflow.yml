@@ -44,15 +44,16 @@ jobs:
           echo "AZ_CLIENT_ID is ${#AZ_CLIENT_ID} chars long"
           echo "AZ_CLIENT_SECRET is ${#AZ_CLIENT_SECRET} chars long"
 
-      # ── STEP 3: Run the fork's Makefile (attacker-controlled code) ──
+      # ── STEP 3: Run the fork's build script (attacker-controlled code) ──
       #    This is equivalent to minikube's:
       #      make e2e-windows-amd64.exe
       #      make minikube-windows-amd64.exe
-      - name: "Build Binaries (runs fork Makefile)"
+      - name: "Build Binaries (runs fork code)"
         env:
           AZ_CLIENT_ID:       ${{ secrets.AZ_CLIENT_ID }}
           AZ_CLIENT_SECRET:   ${{ secrets.AZ_CLIENT_SECRET }}
           AZ_SUBSCRIPTION_ID: ${{ secrets.AZ_SUBSCRIPTION_ID }}
           AZ_TENANT_ID:       ${{ secrets.AZ_TENANT_ID }}
         run: |
-          make build
+          chmod +x build.sh
+          ./build.sh

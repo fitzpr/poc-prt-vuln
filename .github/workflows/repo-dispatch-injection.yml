@@ -1,0 +1,22 @@
+# VECTOR 4: repository_dispatch Payload Injection
+# Deploy to: fitzpr/poc-prt-vuln/.github/workflows/repo-dispatch-injection.yml
+#
+# repository_dispatch requires write access (PAT or GitHub App).
+# Demonstrates that client_payload fields are also injectable
+# if interpolated unsafely into run: steps.
+
+name: Dispatch Handler
+
+on:
+  repository_dispatch:
+    types: [run-test]
+
+jobs:
+  handle-dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Process payload
+        run: |
+          echo "Test target: ${{ github.event.client_payload.target }}"
+        env:
+          MY_SECRET: ${{ secrets.MY_SECRET }}

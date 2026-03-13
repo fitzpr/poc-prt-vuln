@@ -1,0 +1,22 @@
+# VECTOR 3: Issue Comment Injection via issue_comment
+# Deploy to: fitzpr/poc-prt-vuln/.github/workflows/issue-comment-injection.yml
+#
+# issue_comment events on public repos give workflows access to secrets.
+# Unsanitized interpolation of comment body into run: is script injection.
+
+name: Issue Command Handler
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  handle-command:
+    if: contains(github.event.comment.body, '/run-test')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Process command
+        run: |
+          echo "Command received: ${{ github.event.comment.body }}"
+        env:
+          MY_SECRET: ${{ secrets.MY_SECRET }}
