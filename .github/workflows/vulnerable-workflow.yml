@@ -1,0 +1,58 @@
+# ============================================================================
+# PoC: pull_request_target + untrusted fork checkout = credential theft
+# ----------------------------------------------------------------------------
+# This workflow INTENTIONALLY reproduces the dangerous pattern found in:
+#   kubernetes/minikube  .github/workflows/functional_extra.yml
+#
+# It is used solely for a responsible-disclosure video demonstration on
+# HackerOne (#3601323).  The "secrets" configured in this repo are
+# throwaway values that prove the exfiltration path without touching any
+# real infrastructure.
+# ============================================================================
+
+name: "Vulnerable CI (PoC)"
+
+on:
+  pull_request_target:
+    types: [labeled]
+
+jobs:
+  build-and-test:
+    # ── Gate: identical to minikube's ok-to-extra-test label gate ──
+    if: contains(github.event.pull_request.labels.*.name, 'ok-to-test')
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── STEP 1: Check out the FORK's code (the dangerous part) ──
+      - name: "Checkout PR head (fork code)"
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      # ── STEP 2: Inject "Azure" credentials into the environment ──
+      #    (In the real minikube workflow this is azure/login@v2 with
+      #     a full service-principal JSON.  Here we use dummy secrets
+      #     to prove the same exfiltration path.)
+      - name: "Azure Login (simulated)"
+        env:
+          AZ_CLIENT_ID:       ${{ secrets.AZ_CLIENT_ID }}
+          AZ_CLIENT_SECRET:   ${{ secrets.AZ_CLIENT_SECRET }}
+          AZ_SUBSCRIPTION_ID: ${{ secrets.AZ_SUBSCRIPTION_ID }}
+          AZ_TENANT_ID:       ${{ secrets.AZ_TENANT_ID }}
+        run: |
+          echo "::notice::Azure credentials are now in the environment."
+          echo "AZ_CLIENT_ID is ${#AZ_CLIENT_ID} chars long"
+          echo "AZ_CLIENT_SECRET is ${#AZ_CLIENT_SECRET} chars long"
+
+      # ── STEP 3: Run the fork's Makefile (attacker-controlled code) ──
+      #    This is equivalent to minikube's:
+      #      make e2e-windows-amd64.exe
+      #      make minikube-windows-amd64.exe
+      - name: "Build Binaries (runs fork Makefile)"
+        env:
+          AZ_CLIENT_ID:       ${{ secrets.AZ_CLIENT_ID }}
+          AZ_CLIENT_SECRET:   ${{ secrets.AZ_CLIENT_SECRET }}
+          AZ_SUBSCRIPTION_ID: ${{ secrets.AZ_SUBSCRIPTION_ID }}
+          AZ_TENANT_ID:       ${{ secrets.AZ_TENANT_ID }}
+        run: |
+          make build

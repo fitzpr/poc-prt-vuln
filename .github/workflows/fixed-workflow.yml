@@ -1,0 +1,36 @@
+# ============================================================================
+# FIXED WORKFLOW — Recommended remediation using workflow_run
+# ============================================================================
+# This is the SAFE pattern GitHub Security Lab recommends.
+# A non-privileged validation workflow runs first on the fork PR.
+# Only after it succeeds does this separate workflow run with secrets,
+# using the UPSTREAM code (not the fork's).
+# ============================================================================
+
+name: "Secure CI (workflow_run)"
+
+on:
+  workflow_run:
+    workflows: ["PR Validation"]
+    types:
+      - completed
+
+jobs:
+  deploy-test:
+    if: >
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checks out the UPSTREAM code — never the fork
+      - name: Checkout upstream
+        uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: '{"clientId":"${{ secrets.AZ_CLIENT_ID }}","clientSecret":"${{ secrets.AZ_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZ_SUBSCRIPTION_ID }}","tenantId":"${{ secrets.AZ_TENANT_ID }}"}'
+
+      - name: Build and Test
+        run: make build

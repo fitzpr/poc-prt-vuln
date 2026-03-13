@@ -1,0 +1,140 @@
+================================================================
+  VIDEO PoC RECORDING SCRIPT
+  HackerOne #3601323 — pull_request_target credential theft
+================================================================
+
+Use OBS Studio (free) or any screen recorder.  
+Record at 1080p, speak slowly, narrate each step.
+
+────────────────────────────────────────────────────
+SCENE 1  — Show the Real Vulnerability  (≈2 min)
+────────────────────────────────────────────────────
+
+1. Open browser → navigate to:
+   https://github.com/kubernetes/minikube/blob/HEAD/.github/workflows/functional_extra.yml
+
+2. HIGHLIGHT & NARRATE each dangerous block:
+
+   a) "This workflow triggers on pull_request_target with the labeled event.
+       pull_request_target runs with WRITE permissions and access to secrets,
+       even for fork PRs."
+
+   b) SCROLL to the checkout step:
+        - uses: actions/checkout@v6
+          with:
+            ref: ${{ github.event.pull_request.head.sha || github.ref }}
+
+      "Here the workflow checks out the pull request HEAD — that's the
+       FORK's code, not the upstream repo. This is the root cause."
+
+   c) SCROLL to Azure login:
+        - name: Azure Login
+          uses: azure/login@v2
+          with:
+            creds: '{"clientId":"${{ secrets.MINIKUBE_AZ_CLIENT_ID }}", ...}'
+
+      "Immediately after checking out untrusted code, the workflow
+       authenticates to Azure with a full service principal — client ID,
+       secret, subscription ID, and tenant ID all injected."
+
+   d) SCROLL to the make commands:
+        make e2e-windows-amd64.exe
+        make minikube-windows-amd64.exe
+
+      "The fork's Makefile now executes in an environment where all four
+       Azure credentials are available. A single 'curl' in the Makefile
+       exfiltrates them."
+
+   e) "The only gate is the 'ok-to-extra-test' label, which must be
+       applied by an OWNERS member. GitHub Security Lab explicitly
+       states this is insufficient — a single social-engineering
+       mistake exposes the entire Azure subscription."
+
+────────────────────────────────────────────────────
+SCENE 2  — Reproduce in Your Own Repo  (≈5 min)
+────────────────────────────────────────────────────
+
+SETUP (do this BEFORE recording, or record it too):
+
+   Account A  =  fitzpr                    (repo owner)
+   Account B  =  h1attackeraccount          (the "attacker")
+
+3. SHOW the repo you created (poc-prt-vuln) on GitHub.
+   Open Settings → Secrets → Actions.
+   Show that you set 4 repository secrets:
+     AZ_CLIENT_ID        = DUMMY-CLIENT-ID-12345
+     AZ_CLIENT_SECRET    = DUMMY-SECRET-ABCDE
+     AZ_SUBSCRIPTION_ID  = DUMMY-SUB-00000
+     AZ_TENANT_ID        = DUMMY-TENANT-99999
+
+   "These are throwaway dummy values. In the real minikube repo, these
+    are live Azure service-principal credentials."
+
+4. SHOW the workflow file (.github/workflows/vulnerable-workflow.yml):
+   "This is a minimal reproduction of minikube's functional_extra.yml.
+    Same pattern: pull_request_target → checkout fork HEAD → inject
+    secrets → run make."
+
+5. SHOW the legitimate Makefile in the main branch:
+   "This is the safe upstream Makefile. It just prints 'Build complete'."
+
+6. SWITCH to Account B (the attacker).
+
+7. Fork the repo.  SHOW the fork.
+
+8. In the fork, REPLACE the Makefile with the attacker version
+   (attacker-fork/Makefile).
+
+   SHOW the malicious Makefile:
+   "Instead of building, this Makefile reads the Azure credentials
+    from the environment and POSTs them to an attacker-controlled
+    webhook."
+
+9. Open https://webhook.site — SHOW the unique URL.
+   Update the EXFIL_URL in the Makefile to this URL.
+
+10. From Account B, open a PR against the upstream repo.
+    Title it something innocent like "fix: correct typo in README".
+
+11. SWITCH back to Account A (repo owner).
+
+12. On the PR, apply the label:  ok-to-test
+
+    "This simulates a maintainer approving the PR for CI. In minikube
+     the label is 'ok-to-extra-test'."
+
+13. Go to the Actions tab → SHOW the workflow running.
+
+14. Open the workflow logs:
+    - SHOW "Checkout PR head (fork code)" checking out the fork SHA
+    - SHOW "Azure Login (simulated)" printing credential lengths
+    - SHOW "Build Binaries" running the ATTACKER'S Makefile
+    - SHOW the credentials being printed and exfiltrated
+
+15. SWITCH to webhook.site:
+    "Here are the Azure credentials, received out-of-band on an
+     attacker-controlled server. The attack is complete."
+
+────────────────────────────────────────────────────
+SCENE 3  — Show the Fix  (≈1 min)
+────────────────────────────────────────────────────
+
+16. Open .github/workflows/fixed-workflow.yml:
+    "The fix is to use workflow_run. The privileged workflow only
+     triggers after a clean validation workflow succeeds, and it
+     checks out upstream code — never the fork's. Secrets are never
+     exposed to attacker-controlled code."
+
+────────────────────────────────────────────────────
+SCENE 4  — Wrap Up  (≈30 sec)
+────────────────────────────────────────────────────
+
+17. "To summarize: the pull_request_target trigger combined with a fork
+     checkout and secret injection allows any fork to steal Azure
+     credentials when a maintainer applies a label. The label gate
+     is a social-engineering target, not a security boundary.
+     The recommended fix is workflow_run separation."
+
+================================================================
+  END OF SCRIPT — Total runtime target: ~8 minutes
+================================================================
